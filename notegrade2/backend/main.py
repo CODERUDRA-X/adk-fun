@@ -12,7 +12,9 @@ Flow: HTTP request -> build multimodal Content -> ADK Runner runs the agent
 Run:
     pip install -r requirements.txt --break-system-packages
     export GOOGLE_API_KEY=your_key_here
-    uvicorn main:app --reload --port 8000
+    uvicorn main:app --reload --port 8001
+    (Note: 8001, not 8000 — `adk web`/`adk run` for the agent demo uses 8000;
+    running both on the same port causes a socket conflict.)
 """
 
 import os
@@ -182,4 +184,4 @@ async def evaluate_and_get_pdf(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
