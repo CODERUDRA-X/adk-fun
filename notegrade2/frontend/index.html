@@ -70,7 +70,7 @@
     <label>Student's Answer (image(s) or PDF)</label>
     <input type="file" id="files" multiple accept="image/*,.pdf">
 
-    <button id="evalBtn" onclick="evaluate()">Evaluate</button>
+    <button id="evalBtn" onclick="runEvaluation()">Evaluate</button>
   </div>
 
   <div class="loading" id="loading">Evaluating with Gemini... please wait</div>
@@ -103,7 +103,7 @@
 const API_BASE = "http://localhost:8001";
 let lastFormData = null;
 
-async function evaluate() {
+async function runEvaluation() {
   const files = document.getElementById('files').files;
   if (!files.length) { showError("Please upload at least one file."); return; }
 
