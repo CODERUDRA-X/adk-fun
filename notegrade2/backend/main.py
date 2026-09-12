@@ -21,6 +21,7 @@ import os
 import sys
 import json
 import uuid
+import asyncio
 import mimetypes
 from typing import List
 
@@ -30,6 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from google.genai import types
+from google.genai.errors import ServerError, ClientError
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 
@@ -86,7 +88,21 @@ def file_to_part(file_bytes: bytes, filename: str) -> types.Part:
 
 
 async def run_agent(prompt_text: str, file_parts: List[types.Part]) -> dict:
-    """Runs the ADK agent for one evaluation and returns the parsed structured result."""
+    """
+    Runs the ADK agent for one evaluation and returns the parsed structured
+    result.
+
+    Retries on transient Gemini-side overload (503 ServerError, e.g. "This
+    model is currently experiencing high demand") with exponential backoff.
+    This is NOT a code bug — it's Google's servers being momentarily busy —
+    but at any real usage volume (tens or hundreds of students submitting
+    around the same time) you WILL see occasional 503s, so the app has to
+    absorb them instead of crashing the whole request.
+
+    Does NOT retry on ClientError (4xx) — a bad request/schema/auth issue
+    will fail the same way every time, so retrying just wastes time and
+    quota; that class of error should surface immediately instead.
+    """
     user_id = "notegrade-user"
     session_id = f"eval-{uuid.uuid4().hex}"
 
@@ -97,14 +113,43 @@ async def run_agent(prompt_text: str, file_parts: List[types.Part]) -> dict:
     parts = [types.Part.from_text(text=prompt_text)] + file_parts
     new_message = types.Content(role="user", parts=parts)
 
+    max_attempts = 3
+    backoff_seconds = 2  # 2s, then 4s, then 8s
+
+    last_error = None
     final_text = None
-    async for event in runner.run_async(
-        user_id=user_id, session_id=session_id, new_message=new_message
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_text = event.content.parts[0].text
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async for event in runner.run_async(
+                user_id=user_id, session_id=session_id, new_message=new_message
+            ):
+                if event.is_final_response() and event.content and event.content.parts:
+                    final_text = event.content.parts[0].text
+            break  # success — exit retry loop
+        except ServerError as e:
+            last_error = e
+            if attempt == max_attempts:
+                break
+            await asyncio.sleep(backoff_seconds * attempt)
+            continue
+        except ClientError as e:
+            # 4xx — bad request/schema/auth. Retrying won't help.
+            raise HTTPException(
+                status_code=400,
+                detail=f"Request rejected by Gemini API: {e}",
+            )
 
     if final_text is None:
+        if last_error is not None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Gemini is currently overloaded (high demand on Google's "
+                    "side). This is temporary — please try again in a "
+                    "moment."
+                ),
+            )
         raise HTTPException(status_code=502, detail="Agent produced no final response.")
 
     try:

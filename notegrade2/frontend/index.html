@@ -101,7 +101,7 @@
 
 <script>
 const API_BASE = "http://localhost:8001";
-let lastFormData = null;
+let lastEvaluationPayload = null;
 
 async function runEvaluation() {
   const files = document.getElementById('files').files;
@@ -113,7 +113,6 @@ async function runEvaluation() {
   fd.append("max_marks", document.getElementById('maxMarks').value || 10);
   fd.append("rubric_text", document.getElementById('rubric').value);
   for (const f of files) fd.append("files", f);
-  lastFormData = fd;
 
   document.getElementById('evalBtn').disabled = true;
   document.getElementById('loading').style.display = 'block';
@@ -127,6 +126,7 @@ async function runEvaluation() {
       throw new Error(err.detail || "Evaluation failed");
     }
     const data = await res.json();
+    lastEvaluationPayload = data; // save the EXACT result shown, for PDF download
     renderResult(data.evaluation);
   } catch (e) {
     showError(e.message);
@@ -160,8 +160,12 @@ function showError(msg) {
 }
 
 async function downloadPdf() {
-  if (!lastFormData) return;
-  const res = await fetch(`${API_BASE}/evaluate/pdf`, { method: "POST", body: lastFormData });
+  if (!lastEvaluationPayload) return;
+  const res = await fetch(`${API_BASE}/report/pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(lastEvaluationPayload),
+  });
   if (!res.ok) { showError("PDF generation failed."); return; }
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
