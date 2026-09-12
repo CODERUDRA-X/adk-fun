@@ -161,27 +161,34 @@ async def evaluate(
     })
 
 
-@app.post("/evaluate/pdf")
-async def evaluate_and_get_pdf(
-    subject: str = Form(""),
-    question: str = Form(""),
-    max_marks: float = Form(...),
-    rubric_text: str = Form(""),
-    files: List[UploadFile] = File(...),
-):
-    """Same as /evaluate but returns a downloadable PDF report directly."""
-    eval_response = await evaluate(
+@app.post("/report/pdf")
+async def get_pdf_report(payload: dict):
+    """
+    Renders a PDF from an ALREADY-COMPUTED evaluation (the exact JSON
+    returned by /evaluate). Does NOT call the agent again — this is
+    deliberate: re-running the agent for the PDF was causing two problems:
+      1. A second Gemini call can return a slightly different score than
+         what's already on screen (LLM output isn't perfectly deterministic
+         across calls) — confusing "why do the numbers not match" bugs.
+      2. Re-sending the full images/PDF for a second full agent run made
+         this the slowest, heaviest request in the app — the one most
+         likely to hit a flaky connection (which browsers then mislabel
+         as a CORS error, even though CORS is configured correctly).
+
+    Expected body: {"subject": str, "question": str, "evaluation": {...}}
+    i.e. exactly the JSON /evaluate already returned to the frontend.
+    """
+    subject = payload.get("subject", "")
+    question = payload.get("question", "")
+    evaluation = payload.get("evaluation")
+
+    if not evaluation:
+        raise HTTPException(status_code=400, detail="Missing 'evaluation' in request body.")
+
+    pdf_path = generate_pdf_report(
         subject=subject,
         question=question,
-        max_marks=max_marks,
-        rubric_text=rubric_text,
-        files=files,
-    )
-    payload = json.loads(eval_response.body)
-    pdf_path = generate_pdf_report(
-        subject=payload["subject"],
-        question=payload["question"],
-        evaluation=payload["evaluation"],
+        evaluation=evaluation,
     )
     return FileResponse(
         pdf_path,
