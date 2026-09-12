@@ -24,6 +24,7 @@ import uuid
 import mimetypes
 from typing import List
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -33,7 +34,14 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 
 # Make the sibling notegrade_agent package importable regardless of CWD
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PROJECT_ROOT)
+
+# Auto-load the SAME .env the agent uses (notegrade_agent/.env), so you only
+# ever have to set GOOGLE_API_KEY in ONE place, whether you run this via
+# uvicorn or via `adk web`/`adk run`. Safe no-op if the file is missing.
+load_dotenv(os.path.join(_PROJECT_ROOT, "notegrade_agent", ".env"))
+
 from notegrade_agent.agent import root_agent, EvaluationResult  # noqa: E402
 
 from pdf_report import generate_pdf_report
