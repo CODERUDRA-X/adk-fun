@@ -46,10 +46,8 @@ echo 'GOOGLE_API_KEY="your_key_from_aistudio.google.com/apikey"' > notegrade_age
 export GOOGLE_API_KEY="your_key_here"
 ```
 
-WeasyPrint (PDF generation) needs system libs on Linux:
-```bash
-sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
-```
+PDF generation uses ReportLab — pure Python, no system-level libraries
+needed (works out of the box on Windows/Linux/Mac, no `sudo` required).
 
 ## Run it two ways
 
@@ -68,9 +66,13 @@ agent" moment.
 ### B) Real product — FastAPI + frontend
 ```bash
 cd notegrade2/backend
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8001
 ```
-Then open `frontend/index.html` in a browser (it calls `localhost:8000`).
+**Important:** use port `8001`, not `8000` — `adk web`/`adk run` (option A
+above) already binds to 8000. Running both on the same port on Windows
+causes a socket permission error (`WinError 10013`), not just "address in
+use". Then open `frontend/index.html` in a browser (it calls
+`localhost:8001`).
 This gives proper file-upload forms + one-click PDF report download —
 things the ADK dev UI isn't meant to provide (it says so itself: "ADK Web
 is not meant for use in production deployments").
@@ -89,7 +91,14 @@ is not meant for use in production deployments").
 
 - `POST /evaluate` — multipart form: `subject`, `question`, `max_marks`,
   `rubric_text`, `files[]` → JSON evaluation (runs the ADK agent).
-- `POST /evaluate/pdf` — same inputs → downloadable PDF report.
+- `POST /report/pdf` — JSON body `{subject, question, evaluation}` (the
+  exact object `/evaluate` returned) → downloadable PDF. Deliberately does
+  **not** re-run the agent: an earlier version called the agent a second
+  time to build the PDF, which (a) could return a slightly different score
+  than what was already shown on screen, since LLM output isn't perfectly
+  deterministic call-to-call, and (b) made PDF download the slowest,
+  heaviest request in the app — the one most likely to hit a flaky
+  connection. Rendering the PDF from already-computed JSON fixes both.
 - `GET /health` — confirms agent + API key are loaded.
 
 ## Guardrails already in place
