@@ -4,3 +4,4 @@ uvicorn[standard]
 python-multipart
 reportlab
 pydantic
+python-dotenv
